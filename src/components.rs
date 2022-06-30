@@ -1,4 +1,8 @@
-use bevy::{math::Vec2, prelude::Component};
+use bevy::{
+    core::Timer,
+    math::{Vec2, Vec3},
+    prelude::Component,
+};
 
 // Common components
 #[derive(Component)]
@@ -24,14 +28,32 @@ impl From<(f32, f32)> for SpriteSize {
     }
 }
 
+// Player components
 #[derive(Component)]
 pub struct Player;
 
 #[derive(Component)]
 pub struct FromPlayer;
 
+// Enemy components
 #[derive(Component)]
 pub struct Enemy;
 
 #[derive(Component)]
 pub struct FromEnemy;
+
+// Explosion components
+#[derive(Component)]
+pub struct Explosion;
+
+#[derive(Component)]
+pub struct ExplosionSpawn(pub Vec3);
+
+#[derive(Component)]
+pub struct ExplosionTimer(pub Timer);
+
+impl Default for ExplosionTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(0.05, true))
+    }
+}
