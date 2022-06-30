@@ -2,8 +2,8 @@
 
 use bevy::{math::Vec3Swizzles, prelude::*, sprite::collide_aabb::collide, utils::HashSet};
 use components::{
-    Enemy, Explosion, ExplosionSpawn, ExplosionTimer, FromPlayer, Laser, Movable, Player,
-    SpriteSize, Velocity,
+    Enemy, Explosion, ExplosionSpawn, ExplosionTimer, FromEnemy, FromPlayer, Laser, Movable,
+    Player, SpriteSize, Velocity,
 };
 use enemy::EnemyPlugin;
 use player::PlayerPlugin;
@@ -17,12 +17,13 @@ const PLAYER_SPRITE: &str = "player_a.png";
 const PLAYER_SIZE: (f32, f32) = (144., 75.);
 const PLAYER_LASER_SPRITE: &str = "laser_a.png";
 const PLAYER_LASER_SIZE: (f32, f32) = (9., 54.);
+const PLAYER_RESPAWN_DELAY: f64 = 2.;
 
 const ENEMY_SPRITE: &str = "enemy_a.png";
 const ENEMY_SIZE: (f32, f32) = (144., 75.);
 const ENEMY_LASER_SPRITE: &str = "laser_b.png";
 const ENEMY_LASER_SIZE: (f32, f32) = (9., 54.);
-const ENEMY_MAX: u32 = 3;
+const ENEMY_MAX: u32 = 30;
 
 const EXPLOSION_SHEET: &str = "explosion.png";
 const EXPLOSION_LEN: usize = 16;
@@ -49,6 +50,32 @@ struct GameTextures {
 
 struct EnemyCount(u32);
 
+struct PlayerState {
+    on: bool,       // Alive
+    last_shot: f64, // -1 if not shot
+}
+
+impl Default for PlayerState {
+    fn default() -> Self {
+        Self {
+            on: false,
+            last_shot: -1.,
+        }
+    }
+}
+
+impl PlayerState {
+    pub fn shot(&mut self, time: f64) {
+        self.on = false;
+        self.last_shot = time;
+    }
+
+    pub fn spawned(&mut self) {
+        self.on = true;
+        self.last_shot = -1.;
+    }
+}
+
 // Main App
 fn main() {
     App::new()
@@ -65,6 +92,7 @@ fn main() {
         .add_startup_system(setup_system)
         .add_system(movable_system)
         .add_system(player_laser_hit_enemy_system)
+        .add_system(enemy_laser_hit_player_system)
         .add_system(explosion_animation_system)
         .add_system(explosion_to_spawn_system)
         .run();
@@ -174,6 +202,47 @@ fn player_laser_hit_enemy_system(
                 commands
                     .spawn()
                     .insert(ExplosionSpawn(enemy_tf.translation.clone()));
+            }
+        }
+    }
+}
+
+fn enemy_laser_hit_player_system(
+    mut commands: Commands,
+    mut player_state: ResMut<PlayerState>,
+    time: Res<Time>,
+    laser_query: Query<(Entity, &Transform, &SpriteSize), (With<Laser>, With<FromEnemy>)>,
+    player_query: Query<(Entity, &Transform, &SpriteSize), With<Player>>,
+) {
+    if let Ok((player_entity, player_tf, player_size)) = player_query.get_single() {
+        let player_scale = Vec2::from(player_tf.scale.xy());
+
+        for (laser_entity, laser_tf, laser_size) in laser_query.iter() {
+            let laser_scale = Vec2::from(laser_tf.scale.xy());
+
+            // Determine if collision has occured
+            let collision = collide(
+                laser_tf.translation,
+                laser_size.0 * laser_scale,
+                player_tf.translation,
+                player_size.0 * player_scale,
+            );
+
+            // Perform the collision
+            if let Some(_) = collision {
+                // Remove the player
+                commands.entity(player_entity).despawn();
+                player_state.shot(time.seconds_since_startup());
+
+                // Remove the laser
+                commands.entity(laser_entity).despawn();
+
+                // Spawn explosion
+                commands
+                    .spawn()
+                    .insert(ExplosionSpawn(player_tf.translation.clone()));
+
+                break;
             }
         }
     }
