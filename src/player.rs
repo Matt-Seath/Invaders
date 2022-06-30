@@ -65,7 +65,7 @@ fn player_fire_system(
                     .insert(FromPlayer)
                     .insert(SpriteSize::from(PLAYER_LASER_SIZE))
                     .insert(Movable { auto_despawn: true })
-                    .insert(Velocity { x: 0., y: 2. });
+                    .insert(Velocity { x: 0., y: 1. });
             };
             spawn_laser(x_offset);
             spawn_laser(-x_offset);
@@ -78,9 +78,9 @@ fn player_keyboard_event_system(
     mut query: Query<&mut Velocity, With<Player>>,
 ) {
     if let Ok(mut velocity) = query.get_single_mut() {
-        velocity.x = if kb.pressed(KeyCode::Left) {
+        velocity.x = if kb.pressed(KeyCode::A) {
             -1.
-        } else if kb.pressed(KeyCode::Right) {
+        } else if kb.pressed(KeyCode::D) {
             1.
         } else {
             0.

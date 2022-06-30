@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use bevy::{math::Vec3Swizzles, prelude::*, sprite::collide_aabb::collide};
+use bevy::{math::Vec3Swizzles, prelude::*, sprite::collide_aabb::collide, utils::HashSet};
 use components::{
     Enemy, Explosion, ExplosionSpawn, ExplosionTimer, FromPlayer, Laser, Movable, Player,
     SpriteSize, Velocity,
@@ -22,6 +22,7 @@ const ENEMY_SPRITE: &str = "enemy_a.png";
 const ENEMY_SIZE: (f32, f32) = (144., 75.);
 const ENEMY_LASER_SPRITE: &str = "laser_b.png";
 const ENEMY_LASER_SIZE: (f32, f32) = (9., 54.);
+const ENEMY_MAX: u32 = 3;
 
 const EXPLOSION_SHEET: &str = "explosion.png";
 const EXPLOSION_LEN: usize = 16;
@@ -45,6 +46,8 @@ struct GameTextures {
     enemy_laser: Handle<Image>,
     explosion: Handle<TextureAtlas>,
 }
+
+struct EnemyCount(u32);
 
 // Main App
 fn main() {
@@ -98,6 +101,7 @@ fn setup_system(
         explosion,
     };
     commands.insert_resource(game_textures);
+    commands.insert_resource(EnemyCount(0));
 }
 
 fn movable_system(
@@ -126,15 +130,25 @@ fn movable_system(
 
 fn player_laser_hit_enemy_system(
     mut commands: Commands,
+    mut enemy_count: ResMut<EnemyCount>,
     laser_query: Query<(Entity, &Transform, &SpriteSize), (With<Laser>, With<FromPlayer>)>,
     enemy_query: Query<(Entity, &Transform, &SpriteSize), With<Enemy>>,
 ) {
+    let mut despawned_entities: HashSet<Entity> = HashSet::new();
     // Iterate through the lasers
     for (laser_entity, laser_tf, laser_size) in laser_query.iter() {
+        if despawned_entities.contains(&laser_entity) {
+            continue;
+        }
         let laser_scale = Vec2::from(laser_tf.scale.xy());
 
         // Iterate through the enemies
         for (enemy_entity, enemy_tf, enemy_size) in enemy_query.iter() {
+            if despawned_entities.contains(&enemy_entity)
+                || despawned_entities.contains(&laser_entity)
+            {
+                continue;
+            }
             let enemy_scale = Vec2::from(enemy_tf.scale.xy());
 
             // Determine if collision has occured
@@ -149,9 +163,12 @@ fn player_laser_hit_enemy_system(
             if let Some(_) = collision {
                 // Despawn the enemy
                 commands.entity(enemy_entity).despawn();
+                despawned_entities.insert(enemy_entity);
+                enemy_count.0 -= 1;
 
                 // Despawn the laser
                 commands.entity(laser_entity).despawn();
+                despawned_entities.insert(laser_entity);
 
                 // Spawn the explosionspawn
                 commands
