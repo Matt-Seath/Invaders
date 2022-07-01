@@ -23,7 +23,7 @@ const ENEMY_SPRITE: &str = "enemy_a.png";
 const ENEMY_SIZE: (f32, f32) = (144., 75.);
 const ENEMY_LASER_SPRITE: &str = "laser_b.png";
 const ENEMY_LASER_SIZE: (f32, f32) = (9., 54.);
-const ENEMY_MAX: u32 = 30;
+const ENEMY_MAX: u32 = 3;
 
 const EXPLOSION_SHEET: &str = "explosion.png";
 const EXPLOSION_LEN: usize = 16;
