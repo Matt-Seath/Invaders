@@ -9,23 +9,26 @@ use ::bevy::prelude::*;
 use bevy::{core::FixedTimestep, ecs::schedule::ShouldRun};
 use rand::{thread_rng, Rng};
 
+use self::formation::{Formation, FormationMaker};
+
 mod formation;
 
 pub struct EnemyPlugin;
 
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system_set(
-            SystemSet::new()
-                .with_run_criteria(FixedTimestep::step(1.))
-                .with_system(enemy_spawn_system),
-        )
-        .add_system_set(
-            SystemSet::new()
-                .with_run_criteria(enemy_fire_criteria)
-                .with_system(enemy_fire_system),
-        )
-        .add_system(enemy_movement_system);
+        app.insert_resource(FormationMaker::default())
+            .add_system_set(
+                SystemSet::new()
+                    .with_run_criteria(FixedTimestep::step(1.))
+                    .with_system(enemy_spawn_system),
+            )
+            .add_system_set(
+                SystemSet::new()
+                    .with_run_criteria(enemy_fire_criteria)
+                    .with_system(enemy_fire_system),
+            )
+            .add_system(enemy_movement_system);
     }
 }
 
@@ -33,15 +36,13 @@ fn enemy_spawn_system(
     mut commands: Commands,
     game_textures: Res<GameTextures>,
     mut enemy_count: ResMut<EnemyCount>,
+    mut formation_maker: ResMut<FormationMaker>,
     win_size: Res<WinSize>,
 ) {
     if enemy_count.0 < ENEMY_MAX {
-        // Calculate random spawn point
-        let mut rng = thread_rng();
-        let w_span = win_size.w / 2. - 100.;
-        let h_span = win_size.h / 2. - 100.;
-        let x = rng.gen_range(-w_span..w_span);
-        let y = rng.gen_range(-h_span..h_span);
+        // Get formation and start x/y
+        let formation = formation_maker.make(&win_size);
+        let (x, y) = formation.start;
 
         commands
             .spawn_bundle(SpriteBundle {
@@ -53,6 +54,7 @@ fn enemy_spawn_system(
                 },
                 ..Default::default()
             })
+            .insert(formation)
             .insert(SpriteSize::from(ENEMY_SIZE))
             .insert(Enemy);
 
@@ -95,22 +97,26 @@ fn enemy_fire_system(
     }
 }
 
-fn enemy_movement_system(time: Res<Time>, mut query: Query<&mut Transform, With<Enemy>>) {
+fn enemy_movement_system(
+    time: Res<Time>,
+    mut query: Query<(&mut Transform, &mut Formation), With<Enemy>>,
+) {
     let now = time.seconds_since_startup() as f32;
-    for mut transform in query.iter_mut() {
+    for (mut transform, mut formation) in query.iter_mut() {
         // Current position
         let (x_org, y_org) = (transform.translation.x, transform.translation.y);
 
         // Max distance
-        let max_distance = TIME_STEP * BASE_SPEED;
+        let max_distance = TIME_STEP * formation.speed;
 
         // Fixtures
-        let dir: f32 = -1.;
-        let (x_pivot, y_pivot) = (0., 0.);
-        let (x_radius, y_radius) = (200., 130.);
+        let dir: f32 = if formation.start.0 < 0. { 1. } else { -1. };
+        let (x_pivot, y_pivot) = formation.pivot;
+        let (x_radius, y_radius) = formation.radius;
 
         // Calculate next angle
-        let angle = dir * BASE_SPEED * TIME_STEP * now % 360. / PI;
+        let angle = formation.angle
+            + dir * formation.speed * TIME_STEP / (x_radius.min(y_radius) * PI / 2.);
 
         // Compute target x/y
         let x_dst = x_radius * angle.cos() + x_pivot;
@@ -131,6 +137,11 @@ fn enemy_movement_system(time: Res<Time>, mut query: Query<&mut Transform, With<
         let x = if dx > 0. { x.max(x_dst) } else { x.min(x_dst) };
         let y = y_org - dy * distance_ratio;
         let y = if dy > 0. { y.max(y_dst) } else { y.min(y_dst) };
+
+        // Start rotating the formation angle only when is on or close to ellipse
+        if distance < max_distance * formation.speed / 20. {
+            formation.angle = angle;
+        }
 
         let translation = &mut transform.translation;
         (translation.x, translation.y) = (x, y);
